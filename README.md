@@ -96,6 +96,8 @@ Point solved, K: 0.781 (with DP and GPU overheads)
 PRIVATE KEY: 000000000000000000000000000000000000000F4A21B9F5CE114686A1336E07
 ```
 
+Windows Release in Release section was built with Cuda 12.6 props and compute_89,sm_89;compute_86,sm_86;compute_75,sm_75;compute_61,sm_61. Should work on most current GPUs. Or you can download and compile on your own.
+
 <b>Features:</b>
 
 - Lowest K=1.15, it means 1.8 times less required operations compared to classic method with K=2.1, also it means that you need 1.8 times less memory to store DPs.
