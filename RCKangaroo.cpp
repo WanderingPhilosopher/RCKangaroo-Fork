@@ -696,6 +696,7 @@ char* ensure_hex_prefix(char* str) {
 	return str;
 }
 
+/*
 bool parse_range(const std::string& s, uint192_t& start, uint192_t& end) {
 	size_t pos = s.find(':');
 
@@ -728,7 +729,7 @@ bool parse_range(const std::string& s, uint192_t& start, uint192_t& end) {
 
 	return true;
 }
-
+*/
 void print_uint192(const char* label, const uint192_t& value) {
 	if (value.high != 0) {
 		printf("%s: %llx%016llx%016llx\n", label,
