@@ -751,13 +751,18 @@ bool ParseCommandLine(int argc, char* argv[])
 					hex_to_uint192(end_str, &gEndSet);
 
 
-					char start_hex_str[50];
-					uint192_to_hex_str(gStartSet, start_hex_str, sizeof(start_hex_str));
+					uint64_t* gStartWords = (uint64_t*)gStart.data;
+					gStartWords[0] = gStartSet.low;
+					gStartWords[1] = gStartSet.mid;
+					gStartWords[2] = gStartSet.high;
+					gStartWords[3] = 0;
 
-					if (!gStart.SetHexStr(start_hex_str)) {
-						printf("error: failed to set gStart from range start value\n");
+					if (gStartWords[0] == 0 && gStartWords[1] == 0 && gStartWords[2] == 0 && gStartWords[3] == 0) {
+						printf("error: gStart is zero after assignment — check input!\n");
 						return false;
 					}
+
+
 
 
 					char start_range_str[50];
@@ -921,7 +926,8 @@ int main(int argc, char* argv[])
 		gPubKey.y.GetHexStr(sy);
 		printf("Solving public key\r\nX: %s\r\nY: %s\r\n", sx, sy);
 		gStart.GetHexStr(sx);
-		printf("Offset: %s\r\n", sx);
+		trim_leading_zeros(sx);
+		printf("Offset: %s\n", sx);
 
 		if (!SolvePoint(PntToSolve, gRange, gDP, &pk_found))
 		{
@@ -939,6 +945,7 @@ int main(int argc, char* argv[])
 		//happy end
 		char s[100];
 		pk_found.GetHexStr(s);
+		trim_leading_zeros(s);
 		printf("\r\nPRIVATE KEY: %s\r\n\r\n", s);
 		FILE* fp = fopen("RESULTS.TXT", "a");
 		if (fp)
