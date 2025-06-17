@@ -207,27 +207,36 @@ struct uint192_t {
 	}
 };
 
-void hex_to_uint192(const std::string& hex_str, uint192_t& result) {
-	result.setZero();
+void hex_to_uint192(const char* hex_str, uint192_t* result) {
+	result->high = 0;
+	result->mid = 0;
+	result->low = 0;
 
-	std::string hex = hex_str;
-	if (hex.compare(0, 2, "0x") == 0 || hex.compare(0, 2, "0X") == 0) {
-		hex = hex.substr(2); // Remove 0x prefix
+	// Skip "0x" prefix if present
+	if (strncmp(hex_str, "0x", 2) == 0 || strncmp(hex_str, "0X", 2) == 0) {
+		hex_str += 2;
 	}
 
-	size_t len = hex.length();
+	size_t len = strlen(hex_str);
 	if (len > 48) {
-		std::cerr << "Hex string too long for uint192_t" << std::endl;
-		return;
+		printf("error: hex string too long for uint192_t (max 48 hex digits)\n");
+		exit(1);
 	}
 
-	if (len > 32) {
-		result.high = strtoull(hex.substr(0, len - 32).c_str(), nullptr, 16);
-	}
-	if (len > 16) {
-		result.mid = strtoull(hex.substr(len > 32 ? len - 32 : 0, len - (len > 32 ? 32 : 16)).c_str(), nullptr, 16);
-	}
-	result.low = strtoull(hex.substr(len > 16 ? len - 16 : 0).c_str(), nullptr, 16);
+	// Pad the string to 48 digits (left-justified)
+	char full_hex[49] = { 0 }; // 48 hex digits + null
+	memset(full_hex, '0', 48);
+	memcpy(full_hex + (48 - len), hex_str, len);
+
+	// Split into high, mid, low
+	char high_str[17] = { 0 }, mid_str[17] = { 0 }, low_str[17] = { 0 };
+	memcpy(high_str, full_hex, 16);
+	memcpy(mid_str, full_hex + 16, 16);
+	memcpy(low_str, full_hex + 32, 16);
+
+	result->high = strtoull(high_str, NULL, 16);
+	result->mid = strtoull(mid_str, NULL, 16);
+	result->low = strtoull(low_str, NULL, 16);
 }
 
 
