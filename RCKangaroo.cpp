@@ -292,12 +292,14 @@ int get_bit_length(const uint192_t& value) {
 }
 
 // Convert uint192_t to zero-padded 48-digit hex string
-void uint192_to_hex_str(const uint192_t* value, char* hex_str, size_t hex_str_size) {
-	snprintf(hex_str, hex_str_size,
-		"%" PRIx64 "%" PRIx64 "%" PRIx64,
-		value->high, value->mid, value->low);
-
+void uint192_to_hex_str(const uint192_t& value, char* out, size_t out_size) {
+	// Always produce exactly 48 hex digits, even if high/mid are 0
+	snprintf(out, out_size, "%016lx%016lx%016lx",
+		(unsigned long)value.high,
+		(unsigned long)value.mid,
+		(unsigned long)value.low);
 }
+
 
 void trim_leading_zeros(char* str) {
 	char* non_zero = str;
@@ -750,7 +752,7 @@ bool ParseCommandLine(int argc, char* argv[])
 
 
 					char start_hex_str[50];
-					uint192_to_hex_str(&gStartSet, start_hex_str, sizeof(start_hex_str));
+					uint192_to_hex_str(gStartSet, start_hex_str, sizeof(start_hex_str));
 
 					if (!gStart.SetHexStr(start_hex_str)) {
 						printf("error: failed to set gStart from range start value\n");
@@ -1000,6 +1002,4 @@ label_end:
 	free(pPntList2);
 	free(pPntList);
 }
-
-
 
