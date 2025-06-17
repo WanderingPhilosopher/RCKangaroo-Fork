@@ -789,52 +789,72 @@ bool ParseCommandLine(int argc, char* argv[])
 		else
 		
 			if (strcmp(argument, "-range") == 0) {
-				char* range_str = argv[ci];
-				ci++;
+	char* range_str = argv[ci];
+	ci++;
 
-				char* colon_pos = strchr(range_str, ':');
-				if (colon_pos == NULL) {
-					printf("error: invalid format for -range option, expected start:end in hex\n");
-					return false;
-				}
+	
+	char* colon_pos = strchr(range_str, ':');
+	if (colon_pos == NULL) {
+		printf("error: invalid format for -range option, expected start:end in hex\n");
+		return false;
+	}
 
-				*colon_pos = '\0';
-				char* start_str = range_str;
-				char* end_str = colon_pos + 1;
+	*colon_pos = '\0';
+	char* start_str = range_str;
+	char* end_str = colon_pos + 1;
 
-				uint192_t gStartSet, gEndSet, gRangeDiff;
-				hex_to_uint192(start_str, gStartSet);
-				hex_to_uint192(end_str, gEndSet);
+	
+	uint192_t gStartSet, gEndSet, gRangeDiff;
+	hex_to_uint192(start_str, &gStartSet);
+	hex_to_uint192(end_str, &gEndSet);
 
-				std::string start_hex = uint192_to_hex(gStartSet);
-				if (!gStart.SetHexStr(start_hex.c_str())) {
-					printf("error: failed to set gStart from range start value\n");
-					return false;
-				}
+	
+	char start_hex_str[50];
+	uint192_to_hex_str(&gStartSet, start_hex_str, sizeof(start_hex_str));
 
-				print_uint192("Start Range", gStartSet);
-				print_uint192("End   Range", gEndSet);
+	if (!gStart.SetHexStr(start_hex_str)) {
+		printf("error: failed to set gStart from range start value\n");
+		return false;
+	}
 
+	
+	char start_range_str[50];
+	char end_range_str[50];
+	sprintf(start_range_str, "%016llx%016llx%016llx", gStartSet.high, gStartSet.mid, gStartSet.low);
+	sprintf(end_range_str, "%016llx%016llx%016llx", gEndSet.high, gEndSet.mid, gEndSet.low);
 
-				if ((gEndSet.high < gStartSet.high) ||
-					(gEndSet.high == gStartSet.high && gEndSet.mid < gStartSet.mid) ||
-					(gEndSet.high == gStartSet.high && gEndSet.mid == gStartSet.mid && gEndSet.low <= gStartSet.low)) {
-					printf("error: end value must be greater than start value\n");
-					return false;
-				}
+	
+	trim_leading_zeros(start_range_str);
+	trim_leading_zeros(end_range_str);
 
-				subtract_uint192(gEndSet, gStartSet, gRangeDiff);
+	
+	printf("Start Range: %s\n", start_range_str);
+	printf("End   Range: %s\n", end_range_str);
 
-				int bit_length = get_bit_length(gRangeDiff);
+	
+	if ((gEndSet.high < gStartSet.high) || (gEndSet.high == gStartSet.high && gEndSet.mid < gStartSet.mid) ||
+		(gEndSet.high == gStartSet.high && gEndSet.mid == gStartSet.mid && gEndSet.low <= gStartSet.low)) {
+		printf("error: end value must be greater than start value\n");
+		return false;
+	}
 
-				gRange = bit_length;
-				printf("Bits: %d\n", gRange);
+	
+	subtract_uint192(&gEndSet, &gStartSet, &gRangeDiff);
 
-				if (gRange < 32 || gRange > 170) {
-					printf("error: invalid range, resulting bit length must be between 32 and 170\n");
-					return false;
-				}
-			}
+	
+	int bit_length = get_bit_length(&gRangeDiff);
+
+	
+	gRange = bit_length;
+
+	printf("Bits: %d\n", gRange);
+
+	
+	if (gRange < 32 || gRange > 170) {
+		printf("error: invalid range, resulting bit length must be between 32 and 170\n");
+		return false;
+	}
+}
 
 		else
 		
