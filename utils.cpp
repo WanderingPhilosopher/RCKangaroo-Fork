@@ -11,40 +11,40 @@
 
 #else
 
-void _BitScanReverse64(u32* index, u64 msk) 
+void _BitScanReverse64(u32* index, u64 msk)
 {
-    *index = 63 - __builtin_clzll(msk); 
+	*index = 63 - __builtin_clzll(msk);
 }
 
-void _BitScanForward64(u32* index, u64 msk) 
+void _BitScanForward64(u32* index, u64 msk)
 {
-    *index = __builtin_ffsll(msk) - 1; 
+	*index = __builtin_ffsll(msk) - 1;
 }
 
-u64 _umul128(u64 m1, u64 m2, u64* hi) 
-{ 
-    uint128_t ab = (uint128_t)m1 * m2; *hi = (u64)(ab >> 64); return (u64)ab; 
+u64 _umul128(u64 m1, u64 m2, u64* hi)
+{
+	uint128_t ab = (uint128_t)m1 * m2; *hi = (u64)(ab >> 64); return (u64)ab;
 }
 
-u64 __shiftright128 (u64 LowPart, u64 HighPart, u8 Shift)
+u64 __shiftright128(u64 LowPart, u64 HighPart, u8 Shift)
 {
-   u64 ret;
-   __asm__ ("shrd {%[Shift],%[HighPart],%[LowPart]|%[LowPart], %[HighPart], %[Shift]}" 
-      : [ret] "=r" (ret)
-      : [LowPart] "0" (LowPart), [HighPart] "r" (HighPart), [Shift] "Jc" (Shift)
-      : "cc");
-   return ret;
+	u64 ret;
+	__asm__("shrd {%[Shift],%[HighPart],%[LowPart]|%[LowPart], %[HighPart], %[Shift]}"
+		: [ret] "=r" (ret)
+		: [LowPart] "0" (LowPart), [HighPart] "r" (HighPart), [Shift] "Jc" (Shift)
+		: "cc");
+	return ret;
 }
 
-u64 __shiftleft128 (u64 LowPart, u64 HighPart, u8 Shift)
+u64 __shiftleft128(u64 LowPart, u64 HighPart, u8 Shift)
 {
-   u64 ret;
-   __asm__ ("shld {%[Shift],%[LowPart],%[HighPart]|%[HighPart], %[LowPart], %[Shift]}" 
-      : [ret] "=r" (ret)
-      : [LowPart] "r" (LowPart), [HighPart] "0" (HighPart), [Shift] "Jc" (Shift)
-      : "cc");
-   return ret;
-}   
+	u64 ret;
+	__asm__("shld {%[Shift],%[LowPart],%[HighPart]|%[HighPart], %[LowPart], %[Shift]}"
+		: [ret] "=r" (ret)
+		: [LowPart] "r" (LowPart), [HighPart] "0" (HighPart), [Shift] "Jc" (Shift)
+		: "cc");
+	return ret;
+}
 
 u64 GetTickCount64()
 {
@@ -144,7 +144,7 @@ u64 TFastBase::GetBlockCnt()
 	for (int i = 0; i < 256; i++)
 		for (int j = 0; j < 256; j++)
 			for (int k = 0; k < 256; k++)
-			blockCount += lists[i][j][k].cnt;
+				blockCount += lists[i][j][k].cnt;
 	return blockCount;
 }
 
@@ -157,7 +157,7 @@ int TFastBase::lower_bound(TListRec* list, int mps_ind, u8* data)
 	while (count > 0)
 	{
 		it = first;
-		step = count / 2;   
+		step = count / 2;
 		it += step;
 		void* ptr = mps[mps_ind].GetRecPtr(list->data[it]);
 		if (memcmp(ptr, data, DB_FIND_LEN) < 0)
@@ -170,7 +170,7 @@ int TFastBase::lower_bound(TListRec* list, int mps_ind, u8* data)
 	}
 	return first;
 }
- 
+
 u8* TFastBase::AddDataBlock(u8* data, int pos)
 {
 	TListRec* list = &lists[data[0]][data[1]][data[2]];
@@ -243,30 +243,30 @@ bool TFastBase::LoadFromFile(char* fn)
 			for (int k = 0; k < 256; k++)
 			{
 				TListRec* list = &lists[i][j][k];
-				fread(&list->cnt, 1, 2, fp);
-				if (list->cnt)
-				{
-					u32 grow = list->cnt / 2;
-					if (grow < DB_MIN_GROW_CNT)
-						grow = DB_MIN_GROW_CNT;
-					u32 newcap = list->cnt + grow;
-					if (newcap > 0xFFFF)
-						newcap = 0xFFFF;
-					list->data = (u32*)realloc(list->data, newcap * sizeof(u32));
-					list->capacity = newcap;
-
-					for (int m = 0; m < list->cnt; m++)
+				if (fread(&list->cnt, 1, 2, fp) != 2)
+					if (list->cnt)
 					{
-						u32 cmp_ptr;
-						void* ptr = mps[i].AllocRec(&cmp_ptr);
-						list->data[m] = cmp_ptr;
-						if (fread(ptr, 1, DB_REC_LEN, fp) != DB_REC_LEN)
+						u32 grow = list->cnt / 2;
+						if (grow < DB_MIN_GROW_CNT)
+							grow = DB_MIN_GROW_CNT;
+						u32 newcap = list->cnt + grow;
+						if (newcap > 0xFFFF)
+							newcap = 0xFFFF;
+						list->data = (u32*)realloc(list->data, newcap * sizeof(u32));
+						list->capacity = newcap;
+
+						for (int m = 0; m < list->cnt; m++)
 						{
-							fclose(fp);
-							return false;
+							u32 cmp_ptr;
+							void* ptr = mps[i].AllocRec(&cmp_ptr);
+							list->data[m] = cmp_ptr;
+							if (fread(ptr, 1, DB_REC_LEN, fp) != DB_REC_LEN)
+							{
+								fclose(fp);
+								return false;
+							}
 						}
 					}
-				}
 			}
 	fclose(fp);
 	return true;
