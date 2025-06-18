@@ -197,109 +197,6 @@ bool Collision_SOTA(EcPoint& pnt, EcInt t, int TameType, EcInt w, int WildType, 
 	}
 }
 
-// --- Step 1: Define a uint192_t Using Union
-typedef union {
-	struct {
-		uint64_t low;    // Lower 64 bits
-		uint64_t mid;    // Middle 64 bits
-		uint64_t high;   // Higher 64 bits
-	};
-	uint8_t bytes[24];   // 24 bytes for 192 bits
-} uint192_t;
-
-// --- Step 2: Convert Hex Strings to uint192_t
-void hex_to_uint192(const char* hex_str, uint192_t* result) {
-	result->high = 0;
-	result->mid = 0;
-	result->low = 0;
-
-	if (strncmp(hex_str, "0x", 2) == 0 || strncmp(hex_str, "0X", 2) == 0)
-		hex_str += 2;
-
-	size_t len = strlen(hex_str);
-	if (len > 48) {
-		printf("error: hex string too long for uint192_t (max 48 hex digits)\n");
-		exit(1);
-	}
-
-	char full_hex[49] = { 0 };
-	memset(full_hex, '0', 48);
-	memcpy(full_hex + (48 - len), hex_str, len);
-
-	char high_str[17] = { 0 }, mid_str[17] = { 0 }, low_str[17] = { 0 };
-	memcpy(high_str, full_hex, 16);
-	memcpy(mid_str, full_hex + 16, 16);
-	memcpy(low_str, full_hex + 32, 16);
-
-	result->high = strtoull(high_str, NULL, 16);
-	result->mid = strtoull(mid_str, NULL, 16);
-	result->low = strtoull(low_str, NULL, 16);
-}
-
-// --- Step 3: Subtract Two uint192_t Values
-void subtract_uint192(const uint192_t& end, const uint192_t& start, uint192_t& result) {
-	result.low = end.low;
-	result.mid = end.mid;
-	result.high = end.high;
-
-	if (result.low < start.low) {
-		result.low += ~0ULL - start.low + 1;
-		result.mid -= 1;
-	}
-	else {
-		result.low -= start.low;
-	}
-
-	if (result.mid < start.mid) {
-		result.mid += ~0ULL - start.mid + 1;
-		result.high -= 1;
-	}
-	else {
-		result.mid -= start.mid;
-	}
-
-	result.high -= start.high;
-}
-// --- Step 4: Calculate Bit Length of uint192_t
-int get_bit_length(const uint192_t& value) {
-	int bit_length = 0;
-
-	if (value.high != 0) {
-		uint64_t temp = value.high;
-		while (temp) {
-			temp >>= 1;
-			bit_length++;
-		}
-		bit_length += 128;
-	}
-	else if (value.mid != 0) {
-		uint64_t temp = value.mid;
-		while (temp) {
-			temp >>= 1;
-			bit_length++;
-		}
-		bit_length += 64;
-	}
-	else {
-		uint64_t temp = value.low;
-		while (temp) {
-			temp >>= 1;
-			bit_length++;
-		}
-	}
-
-	return bit_length;
-}
-
-// Convert uint192_t to zero-padded 48-digit hex string
-void uint192_to_hex_str(const uint192_t& value, char* out, size_t out_size) {
-	// Always produce exactly 48 hex digits, even if high/mid are 0
-	snprintf(out, out_size, "%016lx%016lx%016lx",
-		(unsigned long)value.high,
-		(unsigned long)value.mid,
-		(unsigned long)value.low);
-}
-
 
 void trim_leading_zeros(char* str) {
 	char* non_zero = str;
@@ -678,7 +575,6 @@ bool SolvePoint(EcPoint PntToSolve, int Range, int DP, EcInt* pk_res)
 }
 
 
-// Function to prepend '0x' if missing
 char* ensure_hex_prefix(char* str) {
 	if (str[0] != '0' || (str[1] != 'x' && str[1] != 'X')) {
 		static char hex_str[32];
@@ -688,174 +584,150 @@ char* ensure_hex_prefix(char* str) {
 	return str;
 }
 
-bool ParseCommandLine(int argc, char* argv[])
-{
+bool ParseCommandLine(int argc, char* argv[]) {
+
+	EcInt gEnd;
 	int ci = 1;
-	while (ci < argc)
-	{
+	while (ci < argc) {
 		char* argument = argv[ci];
 		ci++;
-		if (strcmp(argument, "-gpu") == 0)
-		{
-			if (ci >= argc)
-			{
+
+		if (strcmp(argument, "-gpu") == 0) {
+			if (ci >= argc) {
 				printf("error: missed value after -gpu option\r\n");
 				return false;
 			}
-			char* gpus = argv[ci];
-			ci++;
+			char* gpus = argv[ci++];
 			memset(gGPUs_Mask, 0, sizeof(gGPUs_Mask));
-			for (int i = 0; i < (int)strlen(gpus); i++)
-			{
-				if ((gpus[i] < '0') || (gpus[i] > '9'))
-				{
+			for (int i = 0; i < (int)strlen(gpus); i++) {
+				if ((gpus[i] < '0') || (gpus[i] > '9')) {
 					printf("error: invalid value for -gpu option\r\n");
 					return false;
 				}
 				gGPUs_Mask[gpus[i] - '0'] = 1;
 			}
 		}
-		else
-			if (strcmp(argument, "-dp") == 0)
-			{
-				int val = atoi(argv[ci]);
-				ci++;
-				if ((val < 14) || (val > 60))
-				{
-					printf("error: invalid value for -dp option\r\n");
-					return false;
-				}
-				gDP = val;
+		else if (strcmp(argument, "-dp") == 0) {
+			if (ci >= argc) {
+				printf("error: missed value after -dp option\r\n");
+				return false;
+			}
+			int val = atoi(argv[ci++]);
+			if (val < 14 || val > 60) {
+				printf("error: invalid value for -dp option\r\n");
+				return false;
+			}
+			gDP = val;
+		}
+		
+		else if (strcmp(argument, "-range") == 0) {
+			char* range_str = argv[ci];
+			ci++;
+
+			char* colon_pos = strchr(range_str, ':');
+			if (colon_pos == NULL) {
+				printf("error: invalid format for -range option, expected start:end in hex\n");
+				return false;
 			}
 
-			else
+			*colon_pos = '\0';
+			char* start_str = range_str;
+			char* end_str = colon_pos + 1;
 
-				if (strcmp(argument, "-range") == 0) {
-					char* range_str = argv[ci];
-					ci++;
+			if (!gStart.SetHexStr(start_str)) {
+				printf("error: failed to set gStart from range start value\n");
+				return false;
+			}
+			if (!gEnd.SetHexStr(end_str)) {
+				printf("error: failed to set gEnd from range end value\n");
+				return false;
+			}
 
+			uint64_t* gStartWords = (uint64_t*)gStart.data;
+			if (gStartWords[0] == 0 && gStartWords[1] == 0 &&
+				gStartWords[2] == 0 && gStartWords[3] == 0) {
+				printf("error: gStart is zero after assignment — check input!\n");
+				return false;
+			}
 
-					char* colon_pos = strchr(range_str, ':');
-					if (colon_pos == NULL) {
-						printf("error: invalid format for -range option, expected start:end in hex\n");
-						return false;
+			char start_range_str[100], end_range_str[100];
+			gStart.GetHexStr(start_range_str);
+			gEnd.GetHexStr(end_range_str);
+			trim_leading_zeros(start_range_str);
+			trim_leading_zeros(end_range_str);
+			printf("Start Range: %s\n", start_range_str);
+			printf("End   Range: %s\n", end_range_str);
+
+			EcInt rangeDiff(gEnd);
+			if (rangeDiff.Sub(gStart)) {
+				printf("error: end value must be greater than start value\n");
+				return false;
+			}
+
+			int bitlen = 0;
+			for (int i = 31; i >= 0; --i) {
+				uint8_t byte = ((uint8_t*)rangeDiff.data)[i];
+				if (byte) {
+					for (int b = 7; b >= 0; --b) {
+						if (byte & (1 << b)) {
+							bitlen = i * 8 + b + 1;
+							break;
+						}
 					}
-
-					*colon_pos = '\0';
-					char* start_str = range_str;
-					char* end_str = colon_pos + 1;
-
-
-					uint192_t gStartSet, gEndSet, gRangeDiff;
-					hex_to_uint192(start_str, &gStartSet);
-					hex_to_uint192(end_str, &gEndSet);
-
-
-					uint64_t* gStartWords = (uint64_t*)gStart.data;
-					gStartWords[0] = gStartSet.low;
-					gStartWords[1] = gStartSet.mid;
-					gStartWords[2] = gStartSet.high;
-					gStartWords[3] = 0;
-
-					if (gStartWords[0] == 0 && gStartWords[1] == 0 && gStartWords[2] == 0 && gStartWords[3] == 0) {
-						printf("error: gStart is zero after assignment — check input!\n");
-						return false;
-					}
-
-
-
-
-					char start_range_str[50];
-					char end_range_str[50];
-					sprintf(start_range_str, "%016" PRIx64 "%016" PRIx64 "%016" PRIx64, gStartSet.high, gStartSet.mid, gStartSet.low);
-					sprintf(end_range_str, "%016" PRIx64 "%016" PRIx64 "%016" PRIx64, gEndSet.high, gEndSet.mid, gEndSet.low);
-
-
-
-					trim_leading_zeros(start_range_str);
-					trim_leading_zeros(end_range_str);
-
-
-					printf("Start Range: %s\n", start_range_str);
-					printf("End   Range: %s\n", end_range_str);
-
-
-					if ((gEndSet.high < gStartSet.high) || (gEndSet.high == gStartSet.high && gEndSet.mid < gStartSet.mid) ||
-						(gEndSet.high == gStartSet.high && gEndSet.mid == gStartSet.mid && gEndSet.low <= gStartSet.low)) {
-						printf("error: end value must be greater than start value\n");
-						return false;
-					}
-
-
-					subtract_uint192(gEndSet, gStartSet, gRangeDiff);
-
-					int bit_length = get_bit_length(gRangeDiff);
-
-
-					gRange = bit_length;
-
-					printf("Bits: %d\n", gRange);
-
-
-					if (gRange < 32 || gRange > 170) {
-						printf("error: invalid range, resulting bit length must be between 32 and 170\n");
-						return false;
-					}
+					break;
 				}
+			}
 
+			gRange = bitlen;
+			printf("Bits: %d\n", gRange);
 
-				else
+			if (gRange < 32 || gRange > 180) {
+				printf("error: invalid range, resulting bit length must be between 32 and 180\n");
+				return false;
+			}
+		}
 
-					if (strcmp(argument, "-pubkey") == 0)
-					{
-						if (!gPubKey.SetHexStr(argv[ci]))
-						{
-							printf("error: invalid value for -pubkey option\r\n");
-							return false;
-						}
-						ci++;
-					}
-					else
-						if (strcmp(argument, "-tames") == 0)
-						{
-							strcpy(gTamesFileName, argv[ci]);
-							ci++;
-						}
-						else
-							if (strcmp(argument, "-max") == 0)
-							{
-								double val = atof(argv[ci]);
-								ci++;
-								if (val < 0.001)
-								{
-									printf("error: invalid value for -max option\r\n");
-									return false;
-								}
-								gMax = val;
-							}
-							else
-							{
-								printf("error: unknown option %s\r\n", argument);
-								return false;
-							}
+		else if (strcmp(argument, "-pubkey") == 0) {
+			if (!gPubKey.SetHexStr(argv[ci++])) {
+				printf("error: invalid value for -pubkey option\r\n");
+				return false;
+			}
+		}
+		else if (strcmp(argument, "-tames") == 0) {
+			strcpy(gTamesFileName, argv[ci++]);
+		}
+		else if (strcmp(argument, "-max") == 0) {
+			double val = atof(argv[ci++]);
+			if (val < 0.001) {
+				printf("error: invalid value for -max option\r\n");
+				return false;
+			}
+			gMax = val;
+		}
+		else {
+			printf("error: unknown option %s\r\n", argument);
+			return false;
+		}
 	}
-	if (!gPubKey.x.IsZero())
-		if (!gRange || !gDP)
-		{
+
+	if (!gPubKey.x.IsZero()) {
+		if (!gRange || !gDP) {
 			printf("error: you must specify range and dp options\r\n");
 			return false;
 		}
-	if (gTamesFileName[0] && !IsFileExist(gTamesFileName))
-	{
-		if (gMax == 0.0)
-		{
+	}
+
+	if (gTamesFileName[0] && !IsFileExist(gTamesFileName)) {
+		if (gMax == 0.0) {
 			printf("error: you must also specify -max option to generate tames\r\n");
 			return false;
 		}
 		gGenMode = true;
 	}
+
 	return true;
 }
+
 
 int main(int argc, char* argv[])
 {
