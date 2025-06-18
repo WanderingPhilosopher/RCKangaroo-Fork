@@ -21,6 +21,10 @@
 #include "utils.h"
 #include "GpuKang.h"
 
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+
 time_t program_start_time = time(NULL);  // Capture the start time
 
 
@@ -484,20 +488,27 @@ bool SolvePoint(EcPoint PntToSolve, int Range, int DP, EcInt* pk_res)
 	while (!gSolved)
 	{
 		CheckNewPoints();
+	
+	#ifdef _WIN32
 		Sleep(5);
-		if (GetTickCount64() - tm_stats > 5 * 1000)
+	#else
+		usleep(5000);  // 5 ms
+	#endif
+	
+		if (GetTickCount64() - tm_stats > 5000)  // 5 sec
 		{
 			ShowStats(tm0, ops, dp_val);
 			tm_stats = GetTickCount64();
 		}
-
+	
 		if ((MaxTotalOps > 0.0) && (PntTotalOps > MaxTotalOps))
 		{
 			gIsOpsLimit = true;
-			printf("Operations limit reached\r\n");
+			printf("Operations limit reached\n");
 			break;
 		}
 	}
+
 
 	printf("\n\nStopping work ...\r\n");
 	time_t program_end_time = time(NULL);  // Capture the end time
