@@ -345,7 +345,7 @@ void ShowStats(u64 tm_start, double exp_ops, double dp_val)
 	);
 
 
-	//fflush(stdout);  // Force the console to update the line
+	fflush(stdout);  // Force the console to update the line
 
 }
 
