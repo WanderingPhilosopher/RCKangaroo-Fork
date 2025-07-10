@@ -59,6 +59,11 @@
 #define P_123		0xFFFFFFFFFFFFFFFFull
 #define P_INV32		0x000003D1
 
+// Montgomery constants for optimized InvModP
+#define MONT_R		0x00000001000003D1ull  // 2^64 mod P
+#define MONT_R2		0x00000001000003D0ull  // R^2 mod P
+#define MONT_R_INV	0x000003D1ull           // R^(-1) mod P
+
 #define Add192to192(res, val) { \
   add_cc_64((res)[0], (res)[0], (val)[0]); \
   addc_cc_64((res)[1], (res)[1], (val)[1]); \
@@ -626,5 +631,98 @@ __device__ __forceinline__ void InvModP(u32* res)
 		add_288_P(res);
 	while ((int)res[8] > 0)
 		sub_288_P(res);
+}
+
+// Montgomery reduction for optimized InvModP
+__device__ __forceinline__ void montgomery_reduce(u64* res, u64* val)
+{
+    u64 tmp[5], tmp2[2];
+    
+    // Fast reduction using Montgomery method
+    mul_256_by_P0inv((u32*)tmp, (u32*)(val + 4));
+    
+    add_cc_64(val[0], val[0], tmp[0]);
+    addc_cc_64(val[1], val[1], tmp[1]);
+    addc_cc_64(val[2], val[2], tmp[2]);
+    addc_64(val[3], val[3], tmp[3]);
+    
+    // Final correction
+    u32* t32 = (u32*)tmp;
+    u32* a32 = (u32*)tmp2;
+    u32* k = (u32*)&tmp[4];
+    
+    mul_wide_32(tmp2[0], t32[8], P_INV32);
+    mul_wide_32(tmp[4], t32[9], P_INV32);
+    add_cc_32(a32[1], a32[1], k[0]);
+    addc_32(a32[2], k[1], 0);
+    add_cc_32(a32[1], a32[1], t32[8]);
+    addc_cc_32(a32[2], a32[2], t32[9]);
+    addc_32(a32[3], 0, 0);
+    
+    add_cc_64(res[0], val[0], tmp2[0]);
+    addc_cc_64(res[1], val[1], tmp2[1]);
+    addc_cc_64(res[2], val[2], 0ull);
+    addc_64(res[3], val[3], 0ull);
+}
+
+// Optimized InvModP using Montgomery ladder (Problem #1 solution)
+__device__ __forceinline__ void FastInvModP(u32* res)
+{
+    // Convert to Montgomery form
+    u64 mont_val[4];
+    mont_val[0] = ((u64*)res)[0];
+    mont_val[1] = ((u64*)res)[1];
+    mont_val[2] = ((u64*)res)[2];
+    mont_val[3] = ((u64*)res)[3];
+    
+    // Montgomery multiplication by R^2
+    u64 temp[8];
+    mul_256_by_64(temp, mont_val, MONT_R2 & 0xFFFFFFFF);
+    mul_256_by_64(temp + 4, mont_val, (MONT_R2 >> 32) & 0xFFFFFFFF);
+    add_320_to_256(temp + 1, temp + 4);
+    montgomery_reduce(mont_val, temp);
+    
+    // Use Fermat's little theorem: a^(p-2) mod p = a^(-1) mod p
+    // For secp256k1: p-2 = 0xFFFFFFFEFFFFFC2D
+    u64 result[4] = {1, 0, 0, 0};  // Start with 1 in Montgomery form
+    
+    // Square and multiply algorithm with Montgomery arithmetic
+    for (int i = 255; i >= 0; i--) {
+        // Square
+        u64 sq_temp[8];
+        mul_256_by_64(sq_temp, result, result[0]);
+        mul_256_by_64(sq_temp + 4, result, result[1]);
+        add_320_to_256(sq_temp + 1, sq_temp + 4);
+        mul_256_by_64(sq_temp + 4, result, result[2]);
+        add_320_to_256(sq_temp + 2, sq_temp + 4);
+        mul_256_by_64(sq_temp + 4, result, result[3]);
+        add_320_to_256(sq_temp + 3, sq_temp + 4);
+        montgomery_reduce(result, sq_temp);
+        
+        // Multiply if bit is set in p-2
+        u64 p_minus_2 = 0xFFFFFFFEFFFFFC2Dull;
+        if (i < 64 && (p_minus_2 & (1ull << i))) {
+            u64 mul_temp[8];
+            mul_256_by_64(mul_temp, result, mont_val[0]);
+            mul_256_by_64(mul_temp + 4, result, mont_val[1]);
+            add_320_to_256(mul_temp + 1, mul_temp + 4);
+            mul_256_by_64(mul_temp + 4, result, mont_val[2]);
+            add_320_to_256(mul_temp + 2, mul_temp + 4);
+            mul_256_by_64(mul_temp + 4, result, mont_val[3]);
+            add_320_to_256(mul_temp + 3, mul_temp + 4);
+            montgomery_reduce(result, mul_temp);
+        }
+    }
+    
+    // Convert back from Montgomery form
+    u64 conv_temp[8];
+    mul_256_by_64(conv_temp, result, 1);
+    montgomery_reduce(result, conv_temp);
+    
+    // Store result
+    ((u64*)res)[0] = result[0];
+    ((u64*)res)[1] = result[1];
+    ((u64*)res)[2] = result[2];
+    ((u64*)res)[3] = result[3];
 }
 
