@@ -1,0 +1,51 @@
+# Makefile for Memory Optimization Tests
+# This file is a part of RCKangaroo software
+# (c) 2024, RetiredCoder (RC)
+
+CC = nvcc
+CFLAGS = -O3 -arch=sm_89 -std=c++17
+INCLUDES = -I.
+LIBS = -lcudart
+
+# Target for memory optimization tests
+TARGET = memory_test
+SOURCES = MemoryOptimizationTest.cu
+
+# Default target
+all: $(TARGET)
+
+# Compile memory optimization test
+$(TARGET): $(SOURCES)
+	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $< $(LIBS)
+
+# Clean build artifacts
+clean:
+	rm -f $(TARGET) *.o
+
+# Run the test
+test: $(TARGET)
+	./$(TARGET)
+
+# Compile for different architectures
+test_sm80: $(SOURCES)
+	$(CC) $(CFLAGS) -arch=sm_80 $(INCLUDES) -o $(TARGET)_sm80 $< $(LIBS)
+
+test_sm86: $(SOURCES)
+	$(CC) $(CFLAGS) -arch=sm_86 $(INCLUDES) -o $(TARGET)_sm86 $< $(LIBS)
+
+test_sm89: $(SOURCES)
+	$(CC) $(CFLAGS) -arch=sm_89 $(INCLUDES) -o $(TARGET)_sm89 $< $(LIBS)
+
+# Performance profiling
+profile: $(TARGET)
+	nvprof ./$(TARGET)
+
+# Detailed profiling with metrics
+profile_detailed: $(TARGET)
+	nvprof --metrics dram_read_throughput,dram_write_throughput,shared_load_throughput,shared_store_throughput ./$(TARGET)
+
+# Memory bandwidth test
+bandwidth_test: $(TARGET)
+	nvprof --metrics dram_read_throughput,dram_write_throughput ./$(TARGET)
+
+.PHONY: all clean test profile profile_detailed bandwidth_test

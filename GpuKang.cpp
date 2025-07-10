@@ -55,6 +55,12 @@ bool RCGpuKang::Prepare(EcPoint _PntToSolve, int _Range, int _DP, EcJMP* _EcJump
 	Kparams.KernelB_LDS_Size = 64 * JMP_CNT;
 	Kparams.KernelC_LDS_Size = 96 * JMP_CNT;
 	Kparams.IsGenMode = gGenMode;
+	
+	// Initialize memory optimization parameters for Problem #2
+	Kparams.MemoryAccessPattern = MEMORY_ACCESS_PATTERN_COALESCED;
+	Kparams.SharedMemoryBankConflictAvoidance = 1;
+	Kparams.CoalescedAccessEnabled = 1;
+	Kparams.AsyncMemoryEnabled = ASYNC_MEMORY_ENABLED;
 
 //allocate gpu mem
 	u64 size;

@@ -67,6 +67,37 @@ typedef char i8;
 
 //#define DEBUG_MODE
 
+// Memory optimization constants for Problem #2
+#define MEMORY_ALIGNMENT		128  // 128-byte alignment for optimal memory access
+#define SHARED_MEM_BANK_SIZE	32   // Bank size for shared memory
+#define COALESCED_ACCESS_SIZE	128  // Size for coalesced memory access
+
+// Optimized shared memory sizes for different architectures
+#ifdef __CUDA_ARCH__
+	#if __CUDA_ARCH__ >= 890  // RTX 40xx+ (Ada Lovelace)
+		#define OPTIMIZED_SHARED_MEM_SIZE	(227 * 1024)  // Max shared memory for Ada Lovelace
+		#define WARP_SPECIALIZATION_ENABLED	1
+		#define ASYNC_MEMORY_ENABLED		1
+	#elif __CUDA_ARCH__ >= 800  // RTX 30xx (Ampere)
+		#define OPTIMIZED_SHARED_MEM_SIZE	(164 * 1024)  // Max shared memory for Ampere
+		#define WARP_SPECIALIZATION_ENABLED	0
+		#define ASYNC_MEMORY_ENABLED		1
+	#else  // Older GPUs
+		#define OPTIMIZED_SHARED_MEM_SIZE	(96 * 1024)   // Conservative size for older GPUs
+		#define WARP_SPECIALIZATION_ENABLED	0
+		#define ASYNC_MEMORY_ENABLED		0
+	#endif
+#else
+	#define OPTIMIZED_SHARED_MEM_SIZE	(96 * 1024)
+	#define WARP_SPECIALIZATION_ENABLED	0
+	#define ASYNC_MEMORY_ENABLED		0
+#endif
+
+// Memory access patterns optimization
+#define MEMORY_ACCESS_PATTERN_COALESCED	1
+#define MEMORY_ACCESS_PATTERN_STRIDED	2
+#define MEMORY_ACCESS_PATTERN_RANDOM	3
+
 //gpu kernel parameters
 struct TKparams
 {
@@ -92,6 +123,12 @@ struct TKparams
 
 	u32 KernelA_LDS_Size;
 	u32 KernelB_LDS_Size;
-	u32 KernelC_LDS_Size;	
+	u32 KernelC_LDS_Size;
+	
+	// Memory optimization parameters for Problem #2
+	u32 MemoryAccessPattern;
+	u32 SharedMemoryBankConflictAvoidance;
+	u32 CoalescedAccessEnabled;
+	u32 AsyncMemoryEnabled;
 };
 
