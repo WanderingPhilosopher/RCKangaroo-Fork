@@ -6,6 +6,7 @@
 
 #include "defs.h"
 #include "RCGpuUtils.h"
+#include "RCGpuMemoryOptimization.h"
 
 //imp2 table points for KernelA
 __device__ __constant__ u64 jmp2_table[8 * JMP_CNT];
@@ -40,8 +41,9 @@ __global__ void KernelA(const TKparams Kparams)
 	u64* x_last0 = Kparams.LastPnts + 2 * THREAD_X + 4 * BLOCK_SIZE * BLOCK_X;
 	u64* y_last0 = x_last0 + 4 * PNT_GROUP_CNT * BLOCK_CNT * BLOCK_SIZE;
       
-	u64* jmp1_table = LDS; //32KB
-	u16* lds_jlist = (u16*)&LDS[8 * JMP_CNT]; //4KB, must be aligned 16bytes
+	// Optimized shared memory allocation with bank conflict avoidance
+	u64* jmp1_table = (u64*)get_shared_memory_ptr(0, 8 * JMP_CNT); //32KB
+	u16* lds_jlist = (u16*)get_shared_memory_ptr(8 * JMP_CNT, 4 * 1024); //4KB, must be aligned 16bytes
 
 	int i = THREAD_X;
 	while (i < JMP_CNT)
@@ -59,19 +61,34 @@ __global__ void KernelA(const TKparams Kparams)
 	u64 dp_mask64 = ~((1ull << (64 - Kparams.DP)) - 1);
 	u16 jmp_ind;
 
-	//copy kangs from global to L2
+	// Optimized memory copy from global to L2 with coalesced access
 	u32 kang_ind = PNT_GROUP_CNT * (THREAD_X + BLOCK_X * BLOCK_SIZE);
+	
+	// Prefetch data for better cache utilization
+	prefetch_global_memory(Kparams.Kangs + kang_ind * 12, PNT_GROUP_CNT * 12 * 8);
+	
 	for (u32 group = 0; group < PNT_GROUP_CNT; group++)
 	{	
-		tmp[0] = Kparams.Kangs[(kang_ind + group) * 12 + 0];
-		tmp[1] = Kparams.Kangs[(kang_ind + group) * 12 + 1];
-		tmp[2] = Kparams.Kangs[(kang_ind + group) * 12 + 2];
-		tmp[3] = Kparams.Kangs[(kang_ind + group) * 12 + 3];
+		// Use coalesced memory access for better bandwidth
+		if (Kparams.CoalescedAccessEnabled) {
+			coalesced_load_256(tmp, Kparams.Kangs + (kang_ind + group) * 12, group, 1);
+			coalesced_load_256(tmp + 4, Kparams.Kangs + (kang_ind + group) * 12 + 4, group, 1);
+		} else {
+			tmp[0] = Kparams.Kangs[(kang_ind + group) * 12 + 0];
+			tmp[1] = Kparams.Kangs[(kang_ind + group) * 12 + 1];
+			tmp[2] = Kparams.Kangs[(kang_ind + group) * 12 + 2];
+			tmp[3] = Kparams.Kangs[(kang_ind + group) * 12 + 3];
+		}
 		SAVE_VAL_256(L2x, tmp, group);
-		tmp[0] = Kparams.Kangs[(kang_ind + group) * 12 + 4];
-		tmp[1] = Kparams.Kangs[(kang_ind + group) * 12 + 5];
-		tmp[2] = Kparams.Kangs[(kang_ind + group) * 12 + 6];
-		tmp[3] = Kparams.Kangs[(kang_ind + group) * 12 + 7];
+		
+		if (Kparams.CoalescedAccessEnabled) {
+			coalesced_load_256(tmp, Kparams.Kangs + (kang_ind + group) * 12 + 4, group, 1);
+		} else {
+			tmp[0] = Kparams.Kangs[(kang_ind + group) * 12 + 4];
+			tmp[1] = Kparams.Kangs[(kang_ind + group) * 12 + 5];
+			tmp[2] = Kparams.Kangs[(kang_ind + group) * 12 + 6];
+			tmp[3] = Kparams.Kangs[(kang_ind + group) * 12 + 7];
+		}
 		SAVE_VAL_256(L2y, tmp, group);
 	}
 
@@ -83,6 +100,13 @@ __global__ void KernelA(const TKparams Kparams)
 		u64* jmp_table;
 		__align__(16) u64 jmp_x[4];
 		__align__(16) u64 jmp_y[4];
+		
+		// Warp specialization for RTX 40xx (Problem #2 optimization)
+		#if WARP_SPECIALIZATION_ENABLED
+		if (Kparams.MemoryAccessPattern == MEMORY_ACCESS_PATTERN_COALESCED) {
+			warp_specialized_memory_operations(L2x, PNT_GROUP_CNT * 4);
+		}
+		#endif
 		
 		//first group
 		LOAD_VAL_256(x, L2x, 0);
@@ -185,20 +209,32 @@ __global__ void KernelA(const TKparams Kparams)
     } 
 
 	Kparams.L1S2[BLOCK_X * BLOCK_SIZE + THREAD_X] = L1S2;
-	//copy kangs from L2 to global
+	// Optimized memory copy from L2 to global with coalesced access
 	kang_ind = PNT_GROUP_CNT * (THREAD_X + BLOCK_X * BLOCK_SIZE);
 	for (u32 group = 0; group < PNT_GROUP_CNT; group++)
 	{
 		LOAD_VAL_256(tmp, L2x, group);
-		Kparams.Kangs[(kang_ind + group) * 12 + 0] = tmp[0];
-		Kparams.Kangs[(kang_ind + group) * 12 + 1] = tmp[1];
-		Kparams.Kangs[(kang_ind + group) * 12 + 2] = tmp[2];
-		Kparams.Kangs[(kang_ind + group) * 12 + 3] = tmp[3];
+		
+		// Use coalesced store for better bandwidth
+		if (Kparams.CoalescedAccessEnabled) {
+			coalesced_store_256(Kparams.Kangs + (kang_ind + group) * 12, tmp, group, 1);
+		} else {
+			Kparams.Kangs[(kang_ind + group) * 12 + 0] = tmp[0];
+			Kparams.Kangs[(kang_ind + group) * 12 + 1] = tmp[1];
+			Kparams.Kangs[(kang_ind + group) * 12 + 2] = tmp[2];
+			Kparams.Kangs[(kang_ind + group) * 12 + 3] = tmp[3];
+		}
+		
 		LOAD_VAL_256(tmp, L2y, group);
-		Kparams.Kangs[(kang_ind + group) * 12 + 4] = tmp[0];
-		Kparams.Kangs[(kang_ind + group) * 12 + 5] = tmp[1];
-		Kparams.Kangs[(kang_ind + group) * 12 + 6] = tmp[2];
-		Kparams.Kangs[(kang_ind + group) * 12 + 7] = tmp[3];
+		
+		if (Kparams.CoalescedAccessEnabled) {
+			coalesced_store_256(Kparams.Kangs + (kang_ind + group) * 12 + 4, tmp, group, 1);
+		} else {
+			Kparams.Kangs[(kang_ind + group) * 12 + 4] = tmp[0];
+			Kparams.Kangs[(kang_ind + group) * 12 + 5] = tmp[1];
+			Kparams.Kangs[(kang_ind + group) * 12 + 6] = tmp[2];
+			Kparams.Kangs[(kang_ind + group) * 12 + 7] = tmp[3];
+		}
 	}
 } 
 
